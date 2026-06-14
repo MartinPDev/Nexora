@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-CS3TRLMDRN"></script>
+
+<script>
+window.dataLayer = window.dataLayer || [];
+
+function gtag() {
+    dataLayer.push(arguments);
+}
+
+gtag("js", new Date());
+
+gtag("config", "G-CS3TRLMDRN");
+</script>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Nexora Early Access Admin</title>
+    <link rel="stylesheet" href="css/website.css">
+</head>
+<body>
+
+    <h2>Email Notifications</h2>
+
+    <div>
+        <input id="emailSubject" type="text" placeholder="Email subject">
+
+        <br><br>
+
+        <textarea
+            id="emailMessage"
+            placeholder="Email message"
+            rows="8"
+            style="width:100%; max-width:700px;"
+        ></textarea>
+
+        <br><br>
+
+        <button onclick="sendEarlyAccessEmail()">
+            Send to Early Access Users
+        </button>
+
+        <button onclick="sendBetaApplicationEmail()">
+            Send to Beta Applicants
+        </button>
+
+        <p id="emailStatus"></p>
+    </div>
+
+    <hr>
+
+    <h2>Feature Vote Results</h2>
+
+    <button onclick="loadFeatureVoteResults()">
+        Load Feature Votes
+    </button>
+
+    <div id="featureVoteResults"></div>
+
+    <hr>
+
+    <h2>Beta Dashboard Metrics</h2>
+
+    <div id="betaMetrics" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin-bottom:24px;">
+        <div><strong id="metricTotal">0</strong><br>Total</div>
+        <div><strong id="metricPending">0</strong><br>Pending</div>
+        <div><strong id="metricApproved">0</strong><br>Approved</div>
+        <div><strong id="metricRejected">0</strong><br>Rejected</div>
+        <div><strong id="metricApprovalRate">0%</strong><br>Approval Rate</div>
+    </div>
+
+    <button onclick="loadBetaMetrics()">Refresh Beta Metrics</button>
+
+    <hr>
+
+    <h2>Public Beta Applications</h2>
+
+    <button onclick="loadBetaApplications()">
+        Load Beta Applications
+    </button>
+
+    <div id="betaApplicationList"></div>
+
+    <hr>
+
+<section class="section">
+    <p class="section-label">Nexora Admin</p>
+    <h2>Early Access Signups</h2>
+
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <button class="primary-button" onclick="loadSignups()">Refresh List</button>
+        <button class="secondary-button" onclick="exportSignups()">Export CSV</button>
+    </div>
+
+    <div id="signupList" style="margin-top: 30px;"></div>
+</section>
+
+<script>
+async function loadSignups() {
+    const signupList = document.getElementById("signupList");
+
+    try {
+        const response = await fetch("http://localhost:8090/admin/early-access", {
+            headers: {
+                "X-Admin-Token": "nexora-admin-123"
+            }
+        });
+
+        const data = await response.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+            signupList.innerHTML = "<p>No signups yet.</p>";
+            return;
+        }
+
+        signupList.innerHTML = data.map(item => `
+            <div class="feature-card" style="margin-bottom: 16px;">
+                <h3>${item.name}</h3>
+                <p>Email: ${item.email}</p>
+                <p>Experience: ${item.experience}</p>
+                <p>Joined: ${item.created_at}</p>
+            </div>
+        `).join("");
+
+    } catch (error) {
+        signupList.innerHTML = "<p>Unable to load signups.</p>";
+    }
+}
+
+async function exportSignups() {
+    try {
+        const response = await fetch("http://localhost:8090/admin/early-access/export", {
+            headers: {
+                "X-Admin-Token": "nexora-admin-123"
+            }
+        });
+
+        if (!response.ok) {
+            alert("Unable to export CSV.");
+            return;
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "nexora_early_access.csv";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+        alert("Unable to export CSV.");
+    }
+}
+
+async function loadBetaApplications() {
+
+    const container =
+        document.getElementById("betaApplicationList");
+
+    try {
+
+        const response =
+            await fetch(
+                "http://localhost:8090/admin/beta-applications",
+                {
+                    headers: {
+                        "X-Admin-Token": "nexora-admin-123"
+                    }
+                }
+            );
+
+        const data = await response.json();
+
+        container.innerHTML = data.map(item => `
+            <div style="margin-bottom:20px; padding:16px; border:1px solid #ddd;">
+                <strong>${item.name}</strong><br>
+                ${item.email}<br>
+                Experience: ${item.experience}<br>
+                Goal: ${item.trading_goal}<br>
+                Reason: ${item.beta_reason}<br>
+                Status: <strong>${item.status}</strong><br>
+                Notes: ${item.admin_notes || "None"}<br>
+                Invite Code: <strong>${item.invite_code || "Not generated"}</strong><br>
+                Invited At: ${item.invited_at || "Not invited yet"}<br>
+                Submitted: ${item.created_at}<br><br>
+
+                <textarea
+                    id="betaNotes-${item.id}"
+                    placeholder="Admin notes"
+                    rows="3"
+                    style="width:100%; max-width:600px;"
+                >${item.admin_notes || ""}</textarea>
+
+                <br><br>
+
+                <button onclick="updateBetaStatus(${item.id}, 'approved')">
+                    Approve
+                </button>
+
+                <button onclick="generateBetaInvite(${item.id})">
+                    Generate Invite
+                </button>
+
+                <button onclick="updateBetaStatus(${item.id}, 'rejected')">
+                    Reject
+                </button>
+
+                <button onclick="updateBetaStatus(${item.id}, 'pending')">
+                    Mark Pending
+                </button>
+            </div>
+        `).join("");
+
+    } catch (error) {
+
+        container.innerHTML =
+            "<p>Unable to load beta applications.</p>";
+
+    }
+}
+
+async function sendAdminEmail(endpoint) {
+    const subject = document.getElementById("emailSubject").value.trim();
+    const message = document.getElementById("emailMessage").value.trim();
+    const status = document.getElementById("emailStatus");
+
+    if (!subject || !message) {
+        status.textContent = "Subject and message are required.";
+        return;
+    }
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Token": "nexora-admin-123"
+            },
+            body: JSON.stringify({
+                subject: subject,
+                message: message
+            })
+        });
+
+        const result = await response.json();
+
+        status.textContent = result.message || result.detail;
+
+    } catch (error) {
+        status.textContent = "Unable to send email.";
+    }
+}
+
+
+function sendEarlyAccessEmail() {
+    sendAdminEmail("http://localhost:8090/admin/email/early-access");
+}
+
+
+function sendBetaApplicationEmail() {
+    sendAdminEmail("http://localhost:8090/admin/email/beta-applications");
+}
+
+async function updateBetaStatus(applicationId, status) {
+    const notesField = document.getElementById(`betaNotes-${applicationId}`);
+    const adminNotes = notesField ? notesField.value.trim() : "";
+
+    try {
+        const response = await fetch(
+            `http://localhost:8090/admin/beta-applications/${applicationId}/status`,
+            {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Admin-Token": "nexora-admin-123"
+                },
+                body: JSON.stringify({
+                    status: status,
+                    admin_notes: adminNotes
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        alert(result.message || result.detail);
+
+        loadBetaApplications();
+
+    } catch (error) {
+        alert("Unable to update beta application status.");
+    }
+}
+
+async function loadBetaMetrics() {
+    try {
+        const response = await fetch(
+            "http://localhost:8090/admin/beta-applications/metrics",
+            {
+                headers: {
+                    "X-Admin-Token": "nexora-admin-123"
+                }
+            }
+        );
+
+        const metrics = await response.json();
+
+        document.getElementById("metricTotal").textContent = metrics.total;
+        document.getElementById("metricPending").textContent = metrics.pending;
+        document.getElementById("metricApproved").textContent = metrics.approved;
+        document.getElementById("metricRejected").textContent = metrics.rejected;
+        document.getElementById("metricApprovalRate").textContent = metrics.approval_rate + "%";
+
+    } catch (error) {
+        alert("Unable to load beta metrics.");
+    }
+}
+
+async function generateBetaInvite(applicationId) {
+    try {
+        const response = await fetch(
+            `http://localhost:8090/admin/beta-applications/${applicationId}/invite`,
+            {
+                method: "POST",
+                headers: {
+                    "X-Admin-Token": "nexora-admin-123"
+                }
+            }
+        );
+
+        const result = await response.json();
+
+        alert(result.message + " Code: " + result.invite_code);
+
+        loadBetaApplications();
+
+    } catch (error) {
+        alert("Unable to generate beta invite.");
+    }
+}
+
+async function loadFeatureVoteResults() {
+    const container = document.getElementById("featureVoteResults");
+
+    try {
+        const response = await fetch("http://localhost:8090/public/feature-votes");
+        const data = await response.json();
+
+        container.innerHTML = data.map(item => `
+            <div style="margin-bottom:12px;">
+                <strong>${item.feature}</strong>: ${item.votes} votes
+            </div>
+        `).join("");
+
+    } catch (error) {
+        container.innerHTML = "<p>Unable to load feature votes.</p>";
+    }
+}
+
+loadSignups();
+</script>
+
+</body>
+</html>
